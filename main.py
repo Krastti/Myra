@@ -14,12 +14,15 @@ from aiohttp import ClientConnectorError
 # Импорты
 from Commands.start import router as start_router
 from Commands.help import router as help_router
+from Commands.tinvest import router as tinvest_router
+from Commands.reminders import router as reminders_router, set_bot_instance, load_pending_reminders
+from Database.connection import connect_to_mongo, close_mongo_connection
 
 # Создание логов
 logger = logging.getLogger(__name__)
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s - [%(name)s] - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
@@ -52,8 +55,21 @@ async def check_internet_connection(bot: Bot) -> bool:
 async def main() -> None:
     bot: Bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
+
+    try:
+        await connect_to_mongo()
+    except Exception as e:
+        logger.critical(f"Не удалось подключиться к MongoDB: {e}")
+        sys.exit(1)
+
+    set_bot_instance(bot)
+
     dp.include_router(start_router)
     dp.include_router(help_router)
+    dp.include_router(tinvest_router)
+    dp.include_router(reminders_router)
+
+    await load_pending_reminders()
 
     max_retry = 5 # Максимальное количество попыток переподключения
     retry_delay = 3 # Задержка между попытками подключения в секундах
@@ -93,6 +109,7 @@ async def main() -> None:
             logger.critical(f"Случилась критическая ошибка при запуске бота: {e}")
             sys.exit(1)
         finally:
+            await close_mongo_connection()
             await bot.session.close()
             logger.info('Сессия бота закрыта.')
 
