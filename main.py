@@ -14,7 +14,6 @@ from aiohttp import ClientConnectorError
 # Импорты
 from Commands.start import router as start_router
 from Commands.help import router as help_router
-from Commands.tinvest import router as tinvest_router
 from Commands.reminders import router as reminders_router, set_bot_instance, load_pending_reminders
 from Database.connection import connect_to_mongo, close_mongo_connection
 from clean_logs import run_daily_cleanup
@@ -67,7 +66,6 @@ async def main() -> None:
 
     dp.include_router(start_router)
     dp.include_router(help_router)
-    dp.include_router(tinvest_router)
     dp.include_router(reminders_router)
 
     # Загрузка напоминаний из БД
