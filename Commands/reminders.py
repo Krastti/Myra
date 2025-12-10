@@ -6,9 +6,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timedelta
-
-from Database.connection import connect_to_mongo # Импортируем функцию, если нужно где-то ещё, но не обязательно здесь
-from Database.models import Reminder
+from Database.models import Reminder # <-- Импортируем модель
 from pydantic import ValidationError # Импортируем ValidationError
 
 # Создаём роутер для команд, связанных с напоминаниями
@@ -25,6 +23,13 @@ def set_bot_instance(bot):
     logger.info("Экземпляр бота установлен для модуля напоминаний.")
 
 def parse_time(time_str: str) -> timedelta | datetime | None:
+    """
+    Простой парсер времени.
+    Поддерживает форматы:
+    - "через N минут/часов" (например, "через 5 минут", "через 1 час")
+    - "в HH:MM" (например, "в 18:30")
+    Возвращает timedelta или datetime, или None, если не удалось распознать.
+    """
     now = datetime.now()
 
     # Паттерн для "через N минут/часов"
@@ -50,12 +55,15 @@ def parse_time(time_str: str) -> timedelta | datetime | None:
     return None # Не удалось распознать
 
 async def send_reminder(chat_id: int, text: str, reminder_id: str):
+    """Асинхронная задача, которая отправляет напоминание и обновляет статус в БД."""
     global bot_instance
     if not bot_instance:
         logger.error("send_reminder: bot_instance не установлен!")
         return
 
+    # --- ОБРАЩАЕМСЯ К db ЧЕРЕЗ МОДУЛЬ connection ---
     from Database.connection import db # Импортируем внутри функции, когда она выполняется
+    # ---
 
     try:
         await bot_instance.send_message(chat_id=chat_id, text=f"⏰ Напоминание: {text}")
@@ -69,6 +77,7 @@ async def send_reminder(chat_id: int, text: str, reminder_id: str):
         logger.debug(f"Статус напоминания {reminder_id} обновлён на 'отправлено' в БД.")
     except Exception as e:
         logger.error(f"Ошибка при отправке напоминания пользователю {chat_id} или обновлении БД: {e}")
+        # Попробовать обновить статус, даже если отправка не удалась
         try:
             await db["reminders"].update_one(
                 {"id": reminder_id},
@@ -78,6 +87,7 @@ async def send_reminder(chat_id: int, text: str, reminder_id: str):
             logger.error(f"Ошибка при обновлении статуса ошибки в БД: {db_e}")
 
 async def schedule_reminder_from_db(reminder: Reminder):
+    """Планирует задачу напоминания на основе данных из БД."""
     global bot_instance
     if not bot_instance:
         logger.error("schedule_reminder_from_db: bot_instance не установлен!")
@@ -112,10 +122,10 @@ async def load_pending_reminders():
         # ---
         if db is None:
             logger.critical("Переменная db не инициализирована! Подключение к MongoDB не выполнено?")
-            return
+            return # <-- Добавим проверку на всякий случай
 
         # Ищем все напоминания, которые ещё не были отправлены
-        pending_reminders_docs = await db["reminders"].find({"is_sent": False}).to_list(length=1000)
+        pending_reminders_docs = await db["reminders"].find({"is_sent": False}).to_list(length=1000) # Ограничим для безопасности
         logger.info(f"Найдено {len(pending_reminders_docs)} неотправленных документов в БД.")
 
         for reminder_doc in pending_reminders_docs:
@@ -187,7 +197,9 @@ async def command_set_reminder_handler(message: Message, state: FSMContext) -> N
         return
 
     # --- Сохраняем напоминание в MongoDB ---
+    # --- ОБРАЩАЕМСЯ К db ЧЕРЕЗ МОДУЛЬ connection ---
     from Database.connection import db # Импортируем внутри функции, когда она выполняется
+    # ---
     if db is None:
             logger.critical("Переменная db не инициализирована! Подключение к MongoDB не выполнено?")
             await message.answer("❌ Ошибка: бот не инициализирован для работы с базой данных.")
@@ -221,7 +233,9 @@ async def command_set_reminder_handler(message: Message, state: FSMContext) -> N
 @router.message(Command('cancel_reminders'))
 async def command_cancel_reminders_handler(message: Message) -> None:
     user_id = message.from_user.id
+    # --- ОБРАЩАЕМСЯ К db ЧЕРЕЗ МОДУЛЬ connection ---
     from Database.connection import db # Импортируем внутри функции, когда она выполняется
+    # ---
     if db is None:
         logger.critical("Переменная db не инициализирована! Подключение к MongoDB не выполнено?")
         await message.answer("❌ Ошибка: бот не инициализирован для работы с базой данных.")
