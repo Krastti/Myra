@@ -17,6 +17,7 @@ from Commands.help import router as help_router
 from Commands.tinvest import router as tinvest_router
 from Commands.reminders import router as reminders_router, set_bot_instance, load_pending_reminders
 from Database.connection import connect_to_mongo, close_mongo_connection
+from clean_logs import run_daily_cleanup
 
 # Создание логов
 logger = logging.getLogger(__name__)
@@ -69,7 +70,11 @@ async def main() -> None:
     dp.include_router(tinvest_router)
     dp.include_router(reminders_router)
 
+    # Загрузка напоминаний из БД
     await load_pending_reminders()
+
+    # Фоновая задача по очистке логов
+    log_cleanup_task = asyncio.create_task(run_daily_cleanup('bot.log', 7))
 
     max_retry = 5 # Максимальное количество попыток переподключения
     retry_delay = 3 # Задержка между попытками подключения в секундах
@@ -92,7 +97,10 @@ async def main() -> None:
             # Если подключение стабильно
             logger.info("Подключение стабильно. Запуск бота...")
             logger.info('Бот успешно запущен и работает.')
-            await dp.start_polling(bot)
+            await asyncio.gather(
+                dp.start_polling(bot),
+                log_cleanup_task,
+            )
             break
 
         except (TelegramNetworkError, ClientConnectorError, asyncio.TimeoutError) as e:
@@ -109,6 +117,15 @@ async def main() -> None:
             logger.critical(f"Случилась критическая ошибка при запуске бота: {e}")
             sys.exit(1)
         finally:
+            # Завершаем задачу очистки логов
+            log_cleanup_task.cancel()
+            try:
+                await log_cleanup_task
+            except asyncio.CancelledError:
+                logger.info('Фоновая задача очистки логов остановлена.')
+            except Exception as e:
+                logger.error(f'Ошибка при остановке задачи очистки логов: {e}')
+
             await close_mongo_connection()
             await bot.session.close()
             logger.info('Сессия бота закрыта.')
