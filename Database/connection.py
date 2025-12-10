@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from pymongo.errors import ServerSelectionTimeoutError
 from motor.motor_asyncio import AsyncIOMotorClient
 
-load_dotenv()
+load_dotenv('config.env')
 logger = logging.getLogger(__name__)
 
 # Подключение к БД
