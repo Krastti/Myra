@@ -11,7 +11,7 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S,%f"
 
 logger = logging.getLogger('__name__')
 
-def parse_log_date(date_str: str) -> datetime | None:
+def parse_log_date(date_str: str) -> datetime:
     try:
         if ',' in date_str:
             return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S,%f")
